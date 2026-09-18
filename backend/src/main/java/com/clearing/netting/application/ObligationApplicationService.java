@@ -19,12 +19,15 @@ public class ObligationApplicationService {
 
     private final ObligationRepositoryPort obligationRepository;
     private final MemberRepositoryPort memberRepository;
+    private final AuditApplicationService auditService;
 
     public ObligationApplicationService(
             ObligationRepositoryPort obligationRepository,
-            MemberRepositoryPort memberRepository) {
+            MemberRepositoryPort memberRepository,
+            AuditApplicationService auditService) {
         this.obligationRepository = obligationRepository;
         this.memberRepository = memberRepository;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -39,12 +42,15 @@ public class ObligationApplicationService {
             String currency,
             BigDecimal amount,
             LocalDate tradeDate,
-            LocalDate settleDate) {
+            LocalDate settleDate,
+            String actor) {
         validateMember(payerMemberId);
         validateMember(payeeMemberId);
         TradeObligation obligation = TradeObligation.open(
                 payerMemberId, payeeMemberId, currency, amount, tradeDate, settleDate);
-        return obligationRepository.save(obligation);
+        obligation = obligationRepository.save(obligation);
+        auditService.recordObligationCreated(actor, obligation);
+        return obligation;
     }
 
     private void validateMember(String memberId) {

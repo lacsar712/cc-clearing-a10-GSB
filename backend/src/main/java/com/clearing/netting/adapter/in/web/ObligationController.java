@@ -45,13 +45,15 @@ public class ObligationController {
     @PostMapping
     public ObligationResponse create(@Valid @RequestBody CreateObligationRequest request) {
         AuthContext.requireOperator();
+        String actor = AuthContext.require().username();
         return ObligationResponse.from(obligationService.create(
                 request.payerMemberId(),
                 request.payeeMemberId(),
                 request.currency(),
                 request.amount(),
                 request.tradeDate(),
-                request.settleDate()));
+                request.settleDate(),
+                actor));
     }
 
     public record CreateObligationRequest(

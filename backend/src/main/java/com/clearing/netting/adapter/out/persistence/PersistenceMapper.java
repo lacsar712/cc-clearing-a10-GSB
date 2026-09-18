@@ -1,10 +1,12 @@
 package com.clearing.netting.adapter.out.persistence;
 
+import com.clearing.netting.adapter.out.persistence.entity.AuditEventJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.MemberJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.NetPositionJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.NettingRunJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.ObligationJpaEntity;
 import com.clearing.netting.adapter.out.persistence.entity.UserJpaEntity;
+import com.clearing.netting.domain.model.AuditEvent;
 import com.clearing.netting.domain.model.Member;
 import com.clearing.netting.domain.model.NetPosition;
 import com.clearing.netting.domain.model.NettingRun;
@@ -105,6 +107,29 @@ final class PersistenceMapper {
         e.setUsername(u.getUsername());
         e.setPasswordHash(u.getPasswordHash());
         e.setRole(u.getRole());
+        return e;
+    }
+
+    static AuditEvent toDomain(AuditEventJpaEntity e) {
+        return new AuditEvent(
+                e.getEventId(),
+                e.getEventType(),
+                e.getActor(),
+                e.getRefId(),
+                e.getSummary(),
+                e.getDetail(),
+                e.getCreatedAt());
+    }
+
+    static AuditEventJpaEntity toEntity(AuditEvent a) {
+        AuditEventJpaEntity e = new AuditEventJpaEntity();
+        e.setEventId(a.getEventId());
+        e.setEventType(a.getEventType());
+        e.setActor(a.getActor());
+        e.setRefId(a.getRefId());
+        e.setSummary(a.getSummary());
+        e.setDetail(a.getDetail());
+        e.setCreatedAt(a.getCreatedAt());
         return e;
     }
 }

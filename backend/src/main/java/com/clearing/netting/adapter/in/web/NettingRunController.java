@@ -42,8 +42,9 @@ public class NettingRunController {
     @PostMapping
     public ExecuteResponse execute(@Valid @RequestBody ExecuteRequest request) {
         AuthContext.requireOperator();
+        String actor = AuthContext.require().username();
         NettingApplicationService.NettingRunResult result =
-                nettingService.execute(request.settleDate(), request.currency());
+                nettingService.execute(request.settleDate(), request.currency(), actor);
         return new ExecuteResponse(
                 RunResponse.from(result.run()),
                 result.positions().stream().map(PositionResponse::from).collect(Collectors.toList()),

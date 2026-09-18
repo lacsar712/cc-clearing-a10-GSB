@@ -30,6 +30,7 @@ public class NettingApplicationService {
     private final MemberRepositoryPort memberRepository;
     private final NetPositionRepositoryPort positionRepository;
     private final NettingRunStatusService statusService;
+    private final AuditApplicationService auditService;
     private final MultilateralNettingService nettingService;
 
     public NettingApplicationService(
@@ -37,12 +38,14 @@ public class NettingApplicationService {
             ObligationRepositoryPort obligationRepository,
             MemberRepositoryPort memberRepository,
             NetPositionRepositoryPort positionRepository,
-            NettingRunStatusService statusService) {
+            NettingRunStatusService statusService,
+            AuditApplicationService auditService) {
         this.runRepository = runRepository;
         this.obligationRepository = obligationRepository;
         this.memberRepository = memberRepository;
         this.positionRepository = positionRepository;
         this.statusService = statusService;
+        this.auditService = auditService;
         this.nettingService = new MultilateralNettingService();
     }
 
@@ -70,7 +73,7 @@ public class NettingApplicationService {
     }
 
     @Transactional
-    public NettingRunResult execute(LocalDate settleDate, String currency) {
+    public NettingRunResult execute(LocalDate settleDate, String currency, String actor) {
         if (settleDate == null) {
             throw new DomainException("INVALID_DATE", "settleDate is required");
         }
@@ -105,14 +108,17 @@ public class NettingApplicationService {
 
             run.markCompleted();
             run = runRepository.save(run);
+            auditService.recordNettingExecuted(actor, run, opens, positions);
             return new NettingRunResult(run, positions, opens);
         } catch (DomainException ex) {
             run.markFailed(ex.getMessage());
-            statusService.saveInNewTx(run);
+            run = statusService.saveInNewTx(run);
+            auditService.recordNettingFailed(actor, run);
             throw ex;
         } catch (RuntimeException ex) {
             run.markFailed(ex.getMessage() == null ? "unexpected error" : ex.getMessage());
-            statusService.saveInNewTx(run);
+            run = statusService.saveInNewTx(run);
+            auditService.recordNettingFailed(actor, run);
             throw new DomainException("NETTING_FAILED", ex.getMessage());
         }
     }
