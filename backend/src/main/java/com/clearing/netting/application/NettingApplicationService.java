@@ -1,6 +1,8 @@
 package com.clearing.netting.application;
 
 import com.clearing.netting.domain.exception.DomainException;
+import com.clearing.netting.domain.model.AuditAction;
+import com.clearing.netting.domain.model.AuditOutcome;
 import com.clearing.netting.domain.model.Member;
 import com.clearing.netting.domain.model.NetPosition;
 import com.clearing.netting.domain.model.NettingRun;
@@ -15,9 +17,11 @@ import com.clearing.netting.domain.service.MultilateralNettingService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,6 +34,7 @@ public class NettingApplicationService {
     private final MemberRepositoryPort memberRepository;
     private final NetPositionRepositoryPort positionRepository;
     private final NettingRunStatusService statusService;
+    private final AuditApplicationService auditService;
     private final MultilateralNettingService nettingService;
 
     public NettingApplicationService(
@@ -37,12 +42,14 @@ public class NettingApplicationService {
             ObligationRepositoryPort obligationRepository,
             MemberRepositoryPort memberRepository,
             NetPositionRepositoryPort positionRepository,
-            NettingRunStatusService statusService) {
+            NettingRunStatusService statusService,
+            AuditApplicationService auditService) {
         this.runRepository = runRepository;
         this.obligationRepository = obligationRepository;
         this.memberRepository = memberRepository;
         this.positionRepository = positionRepository;
         this.statusService = statusService;
+        this.auditService = auditService;
         this.nettingService = new MultilateralNettingService();
     }
 
@@ -70,7 +77,7 @@ public class NettingApplicationService {
     }
 
     @Transactional
-    public NettingRunResult execute(LocalDate settleDate, String currency) {
+    public NettingRunResult execute(LocalDate settleDate, String currency, String actor) {
         if (settleDate == null) {
             throw new DomainException("INVALID_DATE", "settleDate is required");
         }
@@ -105,15 +112,61 @@ public class NettingApplicationService {
 
             run.markCompleted();
             run = runRepository.save(run);
+            auditNetting(run, positions, opens, actor);
             return new NettingRunResult(run, positions, opens);
         } catch (DomainException ex) {
             run.markFailed(ex.getMessage());
             statusService.saveInNewTx(run);
+            auditNettingFailure(run, actor, ex.getMessage());
             throw ex;
         } catch (RuntimeException ex) {
             run.markFailed(ex.getMessage() == null ? "unexpected error" : ex.getMessage());
             statusService.saveInNewTx(run);
+            auditNettingFailure(run, actor, run.getFailureReason());
             throw new DomainException("NETTING_FAILED", ex.getMessage());
+        }
+    }
+
+    private void auditNetting(
+            NettingRun run, List<NetPosition> positions, List<TradeObligation> opens, String actor) {
+        BigDecimal sumNet = positions.stream()
+                .map(NetPosition::getNetAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("runId", run.getRunId());
+        detail.put("settleDate", run.getSettleDate().toString());
+        detail.put("currency", run.getCurrency());
+        detail.put("status", run.getStatus().name());
+        detail.put("obligationCount", opens.size());
+        detail.put("positionCount", positions.size());
+        detail.put("sumNetAmount", sumNet.toPlainString());
+        detail.put("positions", positions.stream()
+                .map(p -> Map.of(
+                        "memberId", p.getMemberId(),
+                        "netAmount", p.getNetAmount().toPlainString()))
+                .toList());
+        String summary = String.format(
+                "轧差完成 %s %s：义务 %d 笔，净头寸 %d 笔，Σnet=%s",
+                run.getCurrency(), run.getSettleDate(), opens.size(), positions.size(), sumNet.toPlainString());
+        auditService.record(
+                AuditAction.NETTING_EXECUTE, AuditOutcome.SUCCESS, actor, run.getRunId(), summary, detail);
+    }
+
+    private void auditNettingFailure(NettingRun run, String actor, String reason) {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("runId", run.getRunId());
+        detail.put("settleDate", run.getSettleDate().toString());
+        detail.put("currency", run.getCurrency());
+        detail.put("status", NettingRunStatus.FAILED.name());
+        detail.put("error", reason);
+        String summary = String.format(
+                "轧差失败 %s %s：%s", run.getCurrency(), run.getSettleDate(), reason);
+        // 失败审计必须独立于已回滚的业务事务落库；审计自身异常不能掩盖原始错误
+        try {
+            auditService.recordInNewTx(
+                    AuditAction.NETTING_EXECUTE, AuditOutcome.FAILED, actor, run.getRunId(), summary, detail);
+        } catch (RuntimeException ignored) {
+            // keep the original netting failure as the propagated error
         }
     }
 

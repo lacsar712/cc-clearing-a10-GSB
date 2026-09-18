@@ -51,7 +51,8 @@ public class ObligationController {
                 request.currency(),
                 request.amount(),
                 request.tradeDate(),
-                request.settleDate()));
+                request.settleDate(),
+                AuthContext.get().username()));
     }
 
     public record CreateObligationRequest(

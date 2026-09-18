@@ -48,8 +48,9 @@ docker compose down
 4. 「义务」页筛选 OPEN 义务，或新建一笔同币种义务
 5. 「轧差执行」选择 settleDate + currency（如 USD），执行轧差
 6. 确认净头寸表 ΣnetAmount = 0，批次状态 COMPLETED
-7. 进入批次详情，点击 Settle，义务变为 SETTLED
-8. 使用 `viewer` 登录，确认只能浏览、无法执行写操作
+7. 「操作审计」页出现一条「执行轧差」成功记录，点开行可查看明细；新建义务同样留痕
+8. 进入批次详情，点击 Settle，义务变为 SETTLED
+9. 使用 `viewer` 登录，确认只能浏览（含审计页）、无法执行写操作
 
 健康检查：
 
